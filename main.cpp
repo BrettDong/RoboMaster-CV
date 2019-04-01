@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
     }
     char buf[100];
     bool running = true;
-    float angle_amp = 1.0f;
+    float angle_amp = 0.05f;
     signal(SIGINT, sig_handler);
     signal(SIGKILL, sig_handler);
     cout << "INPUT:  CAMERA " << img.cols << "x" << img.rows << endl;
