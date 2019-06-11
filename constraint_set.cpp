@@ -123,14 +123,14 @@ void DrawRotatedRect(const cv::Mat &img, const cv::RotatedRect &rect, const cv::
 {
     cv::Point2f vertex[4];
 
-    /*cv::Point2f center = rect.center;
+    cv::Point2f center = rect.center;
     float angle = rect.angle;
     std::ostringstream ss;
     ss << angle;
     std::string text(ss.str());
     int font_face = cv::FONT_HERSHEY_COMPLEX;
     double font_scale = 0.5;
-    cv::putText(img, text, center, font_face, font_scale, cv::Scalar(0, 255, 255), thickness, 8, 0);*/
+    cv::putText(img, text, center, font_face, font_scale, cv::Scalar(0, 255, 255), thickness, 8, 0);
 
     rect.points(vertex);
     cv::line(img, vertex[0], vertex[2], color, thickness);
@@ -202,7 +202,7 @@ std::vector<std::vector<cv::Point>> FindContours(const cv::Mat &binary_img)
 int filter_x_count_ = 0, filter_y_count_ = 0, filter_z_count_ = 0;
 int filter_distance_count_ = 0, filter_pitch_count_ = 0, filter_yaw_count_ = 0;
 ENEMY_COLOR enemy_color_ = RED;
-bool using_hsv_ = true;
+bool using_hsv_ = false;
 const float armor_width = 120.0f, armor_height = 60.0f;
 const float light_max_aspect_ratio_ = 20.0f;
 const float light_min_area_ = 1.0f;
@@ -325,8 +325,7 @@ void PossibleArmors(const std::vector<cv::RotatedRect> &lights, std::vector<Armo
             auto edge2 = std::minmax(light2.size.width, light2.size.height);
             auto lights_dis = std::sqrt((light1.center.x - light2.center.x) * (light1.center.x - light2.center.x) +
                                         (light1.center.y - light2.center.y) * (light1.center.y - light2.center.y));
-            auto center_angle = std::atan(std::abs(light1.center.y - light2.center.y) / std::abs(light1.center.x - light2.center.x)) * 180 / CV_PI;
-            center_angle = center_angle > 90 ? 180 - center_angle : center_angle;
+            auto center_angle = std::atan((light1.center.y - light2.center.y) / (light1.center.x - light2.center.x)) * 180 / CV_PI;
 
             cv::RotatedRect rect;
             rect.angle = static_cast<float>(center_angle);
@@ -346,6 +345,7 @@ void PossibleArmors(const std::vector<cv::RotatedRect> &lights, std::vector<Armo
             {
                 angle_diff = 180 - angle_diff;
             }
+            if (angle_diff > 80) angle_diff = 90 - angle_diff;
 
             if (angle_diff < light_max_angle_diff_ &&
                     std::max<float>(edge1.second, edge2.second)/std::min<float>(edge1.second, edge2.second) < 2.0 &&
@@ -519,8 +519,9 @@ void DetectLights(const cv::Mat &src, std::vector<cv::RotatedRect> &lights)
                 cv::RotatedRect single_light = cv::minAreaRect(contours_brightness[i]);
                 cv::Point2f vertices_point[4];
                 single_light.points(vertices_point);
-                LightInfo light_info(vertices_point);
-                single_light.angle = light_info.angle_;
+                // TODO: light angle is not always correct
+                //LightInfo light_info(vertices_point);
+                //single_light.angle = light_info.angle_;
                 lights.push_back(single_light);
                 DrawRotatedRect(light_img, single_light, cv::Scalar(0, 255, 0), 2);
                 break;
