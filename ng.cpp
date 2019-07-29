@@ -14,6 +14,22 @@ namespace DetectionNG
     vector<Point3f> ArmorVertex2D;
     Mat intrinsic, distortion;
 
+    Point3f CalculateCoordinate(const Point2f vertex[])
+    {
+        Mat rvec, tvec;
+        vector<Point2f> ArmorVertex3D;
+        for(int i = 0; i < 4; i++) ArmorVertex3D.push_back(vertex[i]);
+        solvePnP(ArmorVertex2D, ArmorVertex3D, intrinsic, distortion, rvec, tvec);
+        return Point3f(tvec);
+    }
+
+    pair<float, float> CalculateAngle(const Point3f &target)
+    {
+        float yaw = atan2(target.x, target.z) / M_PI * 180;
+        float pitch = atan2(target.y, sqrt(target.x*target.x + target.z*target.z)) / M_PI * 180;
+        return make_pair(yaw, pitch);
+    }
+
     void InitDetector(float intrinsic_matrix[], float distortion_coeffs[])
     {
         ArmorVertex2D.emplace_back(cv::Point3f(-120.0f/2, 200.0f+ 60.0f/2,  0.0));
@@ -78,8 +94,10 @@ namespace DetectionNG
         Point2f vertex[4];
         bool operator < (const ArmorPlate &rhs) const
         {
-            vector<Point2f> cl(vertex, vertex+4), cr(rhs.vertex, rhs.vertex+4);
-            return contourArea(cl) > contourArea(cr);
+            float y1, p1, y2, p2;
+            tie(y1, p1) = CalculateAngle(CalculateCoordinate(vertex));
+            tie(y2, p2) = CalculateAngle(CalculateCoordinate(rhs.vertex));
+            return hypot(y1, p1) < hypot(y2, p2);
         }
     };
 
