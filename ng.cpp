@@ -118,25 +118,6 @@ namespace DetectionNG
         return Mask(size, vertex[0], vertex[1], vertex[2], vertex[3]);
     }
 
-    float EvaluateColor(cv::Mat roi)
-    {
-        int Rcount = 0, Bcount = 0;
-        for(int i = 0; i < roi.rows; i++)
-        {
-            for(int j = 0; j < roi.cols; j++)
-            {
-                Vec3b &p = roi.at<Vec3b>(i, j);
-                const uint8_t &R = p[2], &G = p[1], &B = p[0];
-                const float RGB = R + G + B;
-                if(B / RGB > 0.75f)
-                    ++Bcount;
-                else if(R / RGB > 0.75f)
-                    ++Rcount;
-            }
-        }
-        return (Rcount - Bcount) * 1.0f / (Rcount + Bcount);
-    }
-
     bool DetectArmor(Mat &img, Point3f &target)
     {
 #ifdef CUDA
@@ -199,8 +180,6 @@ namespace DetectionNG
                 meanStdDev(img, mat_mean, mat_stddev, Mask(img.size(), left.vertex));
                 if(mat_mean.at<double>(0, 0) > mat_mean.at<double>(0, 2)) continue;
 
-                if((EvaluateColor(img(left.Expand().toRotatedRect().boundingRect() & Rect(0, 0, img.cols, img.rows))) +
-                    EvaluateColor(img(right.Expand().toRotatedRect().boundingRect() & Rect(0, 0, img.cols, img.rows))) / 2.0f) < 0.9f) continue;
                 ArmorPlate candidate;
                 candidate.vertex[0] = left.vertex[3];
                 candidate.vertex[1] = left.vertex[2];
