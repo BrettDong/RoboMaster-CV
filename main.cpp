@@ -284,13 +284,15 @@ int main(int argc, char *argv[])
     switch(input_type)
     {
         case CAMERA:
-            if(!cap.open(camera_id))
+            if(!cap.open(camera_id, CAP_V4L2))
             {
                 cerr << "Unable to open camera" << endl;
                 return 1;
             }
+            cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
             cap.set(cv::CAP_PROP_FRAME_WIDTH, custom_width);
             cap.set(cv::CAP_PROP_FRAME_HEIGHT, custom_height);
+            cap.set(cv::CAP_PROP_FPS, 60);
             break;
         case VIDEO:
             if(!cap.open(video_file.c_str()))
