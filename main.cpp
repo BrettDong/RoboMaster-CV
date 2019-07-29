@@ -31,7 +31,7 @@
 using namespace std;
 using namespace cv;
 int verbose = 0;
-bool serial_comm, recording, single_step, show_fps;
+bool serial_comm, recording, single_step, show_fps, show_output;
 atomic<bool> running;
 atomic<bool> new_image;
 mutex mtx_input, mtx_output;
@@ -141,6 +141,7 @@ void Detector()
             future_pitch = (pitch - last_pitch) * 0.5f + pitch;
             last_yaw = yaw;
             last_pitch = pitch;
+            if(show_output) cout << yaw << ' ' << pitch << endl;
             if(serial_comm)
             {
                 if(!protocol::SendGimbalAngle(future_yaw, future_pitch))
@@ -151,6 +152,7 @@ void Detector()
         }
         else
         {
+            if(show_output) cout << "not found" << endl;
             if(serial_comm)
             {
                 if(!protocol::SendGimbalAngle(0, 0))
@@ -254,6 +256,10 @@ int main(int argc, char *argv[])
             else if(strcmp(argv[i], "--show-fps") == 0)
             {
                 show_fps = true;
+            }
+            else if(strcmp(argv[i], "--show-output") == 0)
+            {
+                show_output = true;
             }
             else
             {

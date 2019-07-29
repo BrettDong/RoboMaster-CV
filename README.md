@@ -42,5 +42,9 @@ Pause at every frame
 
 Output FPS in standard output every second
 
+-- `--show-output`
+
+Show yaw and pitch in standard output
+
 ## License
 This is a free software distributed under GNU GPLv3.
