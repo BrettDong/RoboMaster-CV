@@ -136,7 +136,13 @@ namespace DetectionNG
         cvtColor(img, hsv, COLOR_BGR2HSV);
         cvtColor(img, gray, COLOR_BGR2GRAY);
 #endif
+        vector<Mat> bgr;
+        split(img, bgr);
+        Mat color_sub;
+        subtract(bgr[2], bgr[1], color_sub);
+        inRange(color_sub, Scalar(50), Scalar(255), color_sub);
         inRange(hsv, Scalar(0, 0, 235), Scalar(255, 255, 255), hsv);
+        hsv &= color_sub;
         vector<vector<Point>> contours;
         findContours(hsv, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
         vector<SingleLightbar> lights;
