@@ -93,7 +93,7 @@ namespace DetectionNG
     {
         Point2f vertex[4];
         bool dq;
-        double orthogonality;
+        double score;
         bool operator < (const ArmorPlate &rhs) const
         {
             float y1, p1, y2, p2;
@@ -142,7 +142,10 @@ namespace DetectionNG
         subtract(bgr[2], bgr[1], color_sub);
         inRange(color_sub, Scalar(50), Scalar(255), color_sub);
         inRange(hsv, Scalar(0, 0, 235), Scalar(255, 255, 255), hsv);
-        hsv &= color_sub;
+        //hsv &= color_sub;
+        //hsv = color_sub;
+        //imshow("Color", color_sub);
+        //imshow("HSV", hsv);
         vector<vector<Point>> contours;
         findContours(hsv, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
         vector<SingleLightbar> lights;
@@ -150,7 +153,7 @@ namespace DetectionNG
         map<int, vector<int>> light_armor_mapping;
         for(auto &ct : contours)
         {
-            if(contourArea(ct) < 10 || contourArea(ct) > 2000) continue;
+            if(contourArea(ct) < 5 || contourArea(ct) > 2000) continue;
             SingleLightbar light(minAreaRect(ct));
             if(abs(light.angle - 90.0f) > 30.f) continue;
             lights.push_back(light);
@@ -179,7 +182,7 @@ namespace DetectionNG
                 if(min(left.vertex[0].y, left.vertex[3].y) < max(right.vertex[1].y, right.vertex[2].y)) continue;
                 if(max(left.vertex[1].y, left.vertex[2].y) > min(right.vertex[0].y, right.vertex[3].y)) continue;
                 float distance = sqrt(dx*dx + dy*dy);
-                if(distance > 4*min(left.length, right.length)) continue;
+                if(distance > 6*min(left.length, right.length)) continue;
                 if(distance < min(left.length, right.length)) continue;
 
                 Mat mask, mat_mean, mat_stddev;
@@ -195,7 +198,9 @@ namespace DetectionNG
                 candidate.vertex[2] = right.vertex[1];
                 candidate.vertex[3] = right.vertex[0];
                 candidate.dq = false;
-                candidate.orthogonality = abs(average_angle - slope) / 90.0;
+                double parallelity = 1.0 - abs(lights[i].angle - lights[j].angle) / 15.0;
+                double orthogonality = abs(average_angle - slope) / 90.0;
+                candidate.score = (parallelity * 2.0 + orthogonality) / 3.0;
                 if(light_armor_mapping.find(i) == light_armor_mapping.end()) light_armor_mapping[i] = vector<int>();
                 if(light_armor_mapping.find(j) == light_armor_mapping.end()) light_armor_mapping[j] = vector<int>();
                 light_armor_mapping[i].emplace_back(armors.size());
@@ -208,13 +213,13 @@ namespace DetectionNG
         {
             if(it->second.size() > 1)
             {
-                double maxv = armors[it->second[0]].orthogonality;
+                double maxv = armors[it->second[0]].score;
                 int maxp = 0, i;
                 for(int i = 1; i < it->second.size(); i++)
                 {
-                    if(armors[it->second[i]].orthogonality > maxv)
+                    if(armors[it->second[i]].score > maxv)
                     {
-                        maxv = armors[it->second[i]].orthogonality;
+                        maxv = armors[it->second[i]].score;
                         maxp = i;
                     }
                 }
@@ -229,8 +234,14 @@ namespace DetectionNG
         sort(armors.begin(), armors.end());
         int i = 0;
         for(; i < armors.size() && armors[i].dq; i++);
+        if(i == armors.size()) return false;
         const ArmorPlate &armor = armors[i];
         Mat rvec, tvec;
+        for(int i = 0; i < armors.size(); i++)
+        {
+            for(int j = 0; j < 4; j++)
+                line(img, armors[i].vertex[j], armors[i].vertex[(j+1)%4], Scalar(0, 0, 255), 3);
+        }
         vector<Point2f> ArmorVertex3D;
         for(int i = 0; i < 4; i++) ArmorVertex3D.push_back(armor.vertex[i]);
         for(int i = 0; i < 4; i++) line(img, armor.vertex[i], armor.vertex[(i+1)%4], Scalar(255, 0, 0), 3);
