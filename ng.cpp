@@ -92,6 +92,8 @@ namespace DetectionNG
     struct ArmorPlate
     {
         Point2f vertex[4];
+        bool dq;
+        double orthogonality;
         bool operator < (const ArmorPlate &rhs) const
         {
             float y1, p1, y2, p2;
@@ -139,6 +141,7 @@ namespace DetectionNG
         findContours(hsv, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
         vector<SingleLightbar> lights;
         vector<ArmorPlate> armors;
+        map<int, vector<int>> light_armor_mapping;
         for(auto &ct : contours)
         {
             if(contourArea(ct) < 10 || contourArea(ct) > 2000) continue;
@@ -185,12 +188,42 @@ namespace DetectionNG
                 candidate.vertex[1] = left.vertex[2];
                 candidate.vertex[2] = right.vertex[1];
                 candidate.vertex[3] = right.vertex[0];
+                candidate.dq = false;
+                candidate.orthogonality = abs(average_angle - slope) / 90.0;
+                if(light_armor_mapping.find(i) == light_armor_mapping.end()) light_armor_mapping[i] = vector<int>();
+                if(light_armor_mapping.find(j) == light_armor_mapping.end()) light_armor_mapping[j] = vector<int>();
+                light_armor_mapping[i].emplace_back(armors.size());
+                light_armor_mapping[j].emplace_back(armors.size());
                 armors.push_back(candidate);
             }
         }
+
+        for(auto it = light_armor_mapping.begin(); it != light_armor_mapping.end(); ++it)
+        {
+            if(it->second.size() > 1)
+            {
+                double maxv = armors[it->second[0]].orthogonality;
+                int maxp = 0, i;
+                for(int i = 1; i < it->second.size(); i++)
+                {
+                    if(armors[it->second[i]].orthogonality > maxv)
+                    {
+                        maxv = armors[it->second[i]].orthogonality;
+                        maxp = i;
+                    }
+                }
+                for(int i = 0; i < it->second.size(); i++)
+                {
+                    if(i != maxp) armors[it->second[i]].dq = true;
+                }
+            }
+        }
+
         if(armors.empty()) return false;
         sort(armors.begin(), armors.end());
-        const ArmorPlate &armor = armors[0];
+        int i = 0;
+        for(; i < armors.size() && armors[i].dq; i++);
+        const ArmorPlate &armor = armors[i];
         Mat rvec, tvec;
         vector<Point2f> ArmorVertex3D;
         for(int i = 0; i < 4; i++) ArmorVertex3D.push_back(armor.vertex[i]);
