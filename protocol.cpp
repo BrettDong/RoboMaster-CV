@@ -20,6 +20,7 @@
 #include "crc.h"
 #include <cstdio>
 #include <cstring>
+#include <chrono>
 #include <termios.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -27,6 +28,7 @@
 #include <sys/select.h>
 #endif
 using namespace std;
+using namespace chrono;
 
 namespace protocol
 {
@@ -167,6 +169,7 @@ struct gimbal_ctrl
     } ctrl;
     float pitch;
     float yaw;
+    uint32_t interval;
 };
 
 struct header
@@ -208,11 +211,13 @@ bool SendGimbalAngle(const float yaw, const float pitch)
     static header header_data;
     static gimbal_ctrl gimbal_ctrl_data;
     static uint8_t buffer[1024];
+    static auto Tepoch = system_clock::now();
 
     gimbal_ctrl_data.ctrl.bit.pitch_mode = 1;
     gimbal_ctrl_data.ctrl.bit.yaw_mode = 1;
     gimbal_ctrl_data.pitch = pitch;
     gimbal_ctrl_data.yaw = yaw;
+    gimbal_ctrl_data.interval = duration_cast<milliseconds>(system_clock::now() - Tepoch).count();
 
     ++header_data.seq_num;
     header_data.length = pack_length;
