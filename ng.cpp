@@ -142,10 +142,7 @@ namespace DetectionNG
         subtract(bgr[2], bgr[1], color_sub);
         inRange(color_sub, Scalar(50), Scalar(255), color_sub);
         inRange(hsv, Scalar(0, 0, 235), Scalar(255, 255, 255), hsv);
-        //hsv &= color_sub;
-        //hsv = color_sub;
-        //imshow("Color", color_sub);
-        //imshow("HSV", hsv);
+        floodFill(color_sub, Point(0, 0), Scalar(255));
         vector<vector<Point>> contours;
         findContours(hsv, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
         vector<SingleLightbar> lights;
@@ -156,6 +153,10 @@ namespace DetectionNG
             if(contourArea(ct) < 5 || contourArea(ct) > 2000) continue;
             SingleLightbar light(minAreaRect(ct));
             if(abs(light.angle - 90.0f) > 30.f) continue;
+            Mat mask, mat_mean, mat_stddev;
+            mask = Mask(gray.size(), light.vertex[0], light.vertex[1], light.vertex[2], light.vertex[3]);
+            meanStdDev(color_sub, mat_mean, mat_stddev, mask);
+            if(mat_mean.at<double>(0, 0) > 250.0) continue;
             lights.push_back(light);
         }
         for(int i = 0; i < lights.size(); i++)
