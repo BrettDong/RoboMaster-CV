@@ -1,5 +1,4 @@
 /****************************************************************************
- *  Copyright (C) 2019 RoboMaster
  *  Copyright (C) 2019 Brett Dong
  *
  *  This program is free software: you can redistribute it and/or modify
@@ -18,13 +17,15 @@
 #ifndef PROTOCOL_H_
 #define PROTOCOL_H_
 
-namespace protocol
+class Transmitter
 {
-
-bool Connect(const char *serial_device);
-bool SendGimbalAngle(const float yaw, const float pitch);
-void Disconnect();
-
-}
+    private:
+        int serial_fd;
+    public:
+        Transmitter() = delete;
+        Transmitter(const char *serial_device);
+        ~Transmitter();
+        bool TransmitGimbalAngle(const float yaw, const float pitch);
+};
 
 #endif //PROTOCOL_H_

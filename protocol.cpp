@@ -20,6 +20,7 @@
 #include "crc.h"
 #include <cstdio>
 #include <cstring>
+#include <stdexcept>
 #include <chrono>
 #include <termios.h>
 #include <fcntl.h>
@@ -30,12 +31,7 @@
 using namespace std;
 using namespace chrono;
 
-namespace protocol
-{
-
-int serial_fd;
-
-bool Connect(const char *serial_device)
+Transmitter::Transmitter(const char *serial_device)
 {
     int stop_bits = 1;
     int data_bits = 8;
@@ -53,13 +49,13 @@ bool Connect(const char *serial_device)
 
     if(serial_fd < 0)
     {
-        return false;
+        throw runtime_error("cannot set up tty connection");
     }
 
     /* save current port parameter */
     if (tcgetattr(serial_fd, &old_termios) != 0)
     {
-        return false;
+        throw runtime_error("cannot set up tty connection");
     }
     memset(&new_termios, 0, sizeof(new_termios));
 
@@ -137,15 +133,14 @@ bool Connect(const char *serial_device)
     /* activite the configuration */
     if ((tcsetattr(serial_fd, TCSANOW, &new_termios)) != 0)
     {
-        return false;
+        throw runtime_error("cannot set up tty connection");
     }
 
     FD_ZERO(&serial_fd_set);
     FD_SET(serial_fd, &serial_fd_set);
-    return true;
 }
 
-void Disconnect()
+Transmitter::~Transmitter()
 {
     close(serial_fd);
     serial_fd = -1;
@@ -201,7 +196,7 @@ struct header
 
 #pragma pack(pop)
 
-bool SendGimbalAngle(const float yaw, const float pitch)
+bool Transmitter::TransmitGimbalAngle(const float yaw, const float pitch)
 {
     static const uint8_t cmd_set_prefix[] = {CMD_SET_GIMBAL_ANGLE, GIMBAL_CMD_SET};
     static const uint32_t HEADER_LEN = sizeof(header), CMD_SET_PREFIX_LEN = 2*sizeof(uint8_t);
@@ -231,6 +226,4 @@ bool SendGimbalAngle(const float yaw, const float pitch)
     /*printf("Sending %d bytes [ ", pack_length);
     for(int i = 0; i < pack_length; i++) printf("%02x ", buffer[i]);
     printf("]\n");*/
-}
-
 }

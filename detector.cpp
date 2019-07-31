@@ -47,7 +47,7 @@ pair<float, float> Detector::CalculateAngle(const Point3f &target)
 
 Detector::Detector(std::string camera, float intrinsic_matrix[], float distortion_coeffs[], std::function<bool(bool, float, float)> callback)
 {
-    if(!cap.open(camera, CAP_V4L2)) throw runtime_error("Cannot open camera");
+    if(!cap.open(camera, CAP_V4L2)) throw runtime_error("cannot open camera");
     cap.set(CAP_PROP_FOURCC, VideoWriter::fourcc('M', 'J', 'P', 'G'));
     cap.set(CAP_PROP_FRAME_WIDTH, 640);
     cap.set(CAP_PROP_FRAME_HEIGHT, 480);

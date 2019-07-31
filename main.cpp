@@ -30,15 +30,17 @@
 #include "protocol.h"
 using namespace std;
 using namespace cv;
-bool serial_comm, show_output, show_fps, show_img;
+bool show_output, show_fps, show_img;
 Detector *detector;
+Transmitter *transmitter;
 
 void clean_up()
 {
     if(detector) detector->StopDetection();
-    if(serial_comm) protocol::Disconnect();
+    if(transmitter) delete transmitter;
     delete detector;
     detector = nullptr;
+    transmitter = nullptr;
 }
 
 void sig_handler(int sig)
@@ -48,38 +50,35 @@ void sig_handler(int sig)
 
 bool ctrl_signal_callback(bool detected, float yaw, float pitch)
 {
-    return protocol::SendGimbalAngle(yaw, pitch);
+    if(transmitter) return transmitter->TransmitGimbalAngle(yaw, pitch);
+    else return true;
 }
 
 int main(int argc, char *argv[])
 {
-    string serial_device("/dev/serial_sdk");
-    serial_comm = true;
-    if(argc > 1)
+    bool dummy = false;
+    for(int i = 1; i < argc; i++)
     {
-        for(int i = 1; i < argc; i++)
+        if(strcmp(argv[i], "--dummy") == 0)
         {
-            if(strcmp(argv[i], "--dummy") == 0)
-            {
-                serial_comm = false;
-            }
-            else if(strcmp(argv[i], "--show-fps") == 0)
-            {
-                show_fps = true;
-            }
-            else if(strcmp(argv[i], "--show-output") == 0)
-            {
-                show_output = true;
-            }
-            else if(strcmp(argv[i], "--show-img") == 0)
-            {
-                show_img = true;
-            }
-            else
-            {
-                cout << "Unrecognized parameter " << argv[i] << endl;
-                return 1;
-            }
+            dummy = true;
+        }
+        else if(strcmp(argv[i], "--show-fps") == 0)
+        {
+            show_fps = true;
+        }
+        else if(strcmp(argv[i], "--show-output") == 0)
+        {
+            show_output = true;
+        }
+        else if(strcmp(argv[i], "--show-img") == 0)
+        {
+            show_img = true;
+        }
+        else
+        {
+            cout << "Unrecognized parameter " << argv[i] << endl;
+            return 1;
         }
     }
     Mat img, res;
@@ -109,10 +108,19 @@ int main(int argc, char *argv[])
         cout << e.what() << endl;
         return 1;
     }
-    if(serial_comm && !protocol::Connect(serial_device.c_str()))
+    if(!dummy)
     {
-        cerr << "Unable to connect " << serial_device << endl;
-        return 1;
+        try
+        {
+            transmitter = new Transmitter("/dev/serial_sdk");
+        }
+        catch(exception &e)
+        {
+            cout << "Unable to connect to STM32" << endl;
+            cout << e.what() << endl;
+            delete detector;
+            return 1;
+        }
     }
     signal(SIGINT, sig_handler);
     signal(SIGKILL, sig_handler);
