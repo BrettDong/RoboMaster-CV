@@ -93,13 +93,10 @@ namespace DetectionNG
     {
         Point2f vertex[4];
         bool dq;
-        double score;
+        double credibility, preferability;
         bool operator < (const ArmorPlate &rhs) const
         {
-            float y1, p1, y2, p2;
-            tie(y1, p1) = CalculateAngle(CalculateCoordinate(vertex));
-            tie(y2, p2) = CalculateAngle(CalculateCoordinate(rhs.vertex));
-            return hypot(y1, p1) < hypot(y2, p2);
+            return preferability > rhs.preferability;
         }
     };
 
@@ -200,8 +197,21 @@ namespace DetectionNG
                 candidate.vertex[3] = right.vertex[0];
                 candidate.dq = false;
                 double parallelity = 1.0 - abs(lights[i].angle - lights[j].angle) / 15.0;
+                double similarity = 1.0 / (max(lights[i].length, lights[j].length) / min(lights[i].length, lights[j].length));
                 double orthogonality = abs(average_angle - slope) / 90.0;
-                candidate.score = (parallelity * 2.0 + orthogonality) / 3.0;
+                candidate.credibility = (parallelity + similarity + orthogonality) / 3.0;
+                float yaw, pitch;
+                tie(yaw, pitch) = CalculateAngle(CalculateCoordinate(candidate.vertex));
+                double rotation = 1.0 - hypot(yaw, pitch) / 30.0;
+                vector<Point> vertex, contour;
+                vertex.emplace_back(candidate.vertex[0]);
+                vertex.emplace_back(candidate.vertex[1]);
+                vertex.emplace_back(candidate.vertex[2]);
+                vertex.emplace_back(candidate.vertex[3]);
+                convexHull(vertex, contour);
+                cout << contourArea(contour) << endl;
+                double area = contourArea(contour) / 3000.0;
+                candidate.preferability = (rotation + area) / 2.0;
                 if(light_armor_mapping.find(i) == light_armor_mapping.end()) light_armor_mapping[i] = vector<int>();
                 if(light_armor_mapping.find(j) == light_armor_mapping.end()) light_armor_mapping[j] = vector<int>();
                 light_armor_mapping[i].emplace_back(armors.size());
@@ -214,13 +224,13 @@ namespace DetectionNG
         {
             if(it->second.size() > 1)
             {
-                double maxv = armors[it->second[0]].score;
+                double maxv = armors[it->second[0]].credibility;
                 int maxp = 0, i;
                 for(int i = 1; i < it->second.size(); i++)
                 {
-                    if(armors[it->second[i]].score > maxv)
+                    if(armors[it->second[i]].credibility > maxv)
                     {
-                        maxv = armors[it->second[i]].score;
+                        maxv = armors[it->second[i]].credibility;
                         maxp = i;
                     }
                 }
@@ -241,7 +251,7 @@ namespace DetectionNG
         for(int i = 0; i < armors.size(); i++)
         {
             for(int j = 0; j < 4; j++)
-                line(img, armors[i].vertex[j], armors[i].vertex[(j+1)%4], Scalar(0, 0, 255), 3);
+                line(img, armors[i].vertex[j], armors[i].vertex[(j+1)%4], armors[i].dq ? Scalar(0, 0, 255) : Scalar(0, 255, 0), 3);
         }
         vector<Point2f> ArmorVertex3D;
         for(int i = 0; i < 4; i++) ArmorVertex3D.push_back(armor.vertex[i]);
