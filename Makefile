@@ -21,14 +21,14 @@ all: trial calibration picker
 picker: picker.cpp
 	$(CXX) $(CXXFLAGS) picker.cpp -o picker $(LDFLAGS)
 
-trial: ng.o crc.o protocol.o main.o
-	$(CXX) ng.o crc.o protocol.o main.o -o trial -pthread $(LDFLAGS)
+trial: detector.o crc.o protocol.o main.o
+	$(CXX) detector.o crc.o protocol.o main.o -o trial -pthread $(LDFLAGS)
 
 calibration: calibration.cpp
 	$(CXX) $(CXXFLAGS) calibration.cpp -o calibration $(LDFLAGS)
 
-ng.o: ng.cpp
-	$(CXX) $(CXXFLAGS) -c ng.cpp
+detector.o: detector.cpp
+	$(CXX) $(CXXFLAGS) -c detector.cpp
 
 main.o: main.cpp
 	$(CXX) $(CXXFLAGS) -c main.cpp
@@ -39,9 +39,9 @@ protocol.o: protocol.cpp
 crc.o: crc.c
 	$(CC) $(CFLAGS) -c crc.c
 
-main.cpp: ng.h protocol.h
+main.cpp: detector.h protocol.h
 
-ng.cpp: ng.h
+detector.cpp: detector.h
 
 protocol.cpp: protocol.h
 

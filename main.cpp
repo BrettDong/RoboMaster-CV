@@ -26,39 +26,19 @@
 #include <thread>
 #include <signal.h>
 #include <unistd.h>
-#include "ng.h"
+#include "detector.h"
 #include "protocol.h"
 using namespace std;
 using namespace cv;
-int verbose = 0;
-bool serial_comm, recording, single_step, show_fps, show_output;
-atomic<bool> running;
-atomic<bool> new_image;
-mutex mtx_input, mtx_output;
-VideoCapture cap;
-VideoWriter writer;
-Mat img;
-string robot;
-
-enum INPUT_TYPE
-{
-    CAMERA = 0,
-    VIDEO
-};
+bool serial_comm, show_output, show_fps, show_img;
+Detector *detector;
 
 void clean_up()
 {
-    running = false;
-    mtx_output.lock();
-    if(serial_comm)
-    {
-        protocol::Disconnect();
-    }
-    if(recording)
-    {
-        writer.release();
-    }
-    mtx_output.unlock();
+    if(detector) detector->StopDetection();
+    if(serial_comm) protocol::Disconnect();
+    delete detector;
+    detector = nullptr;
 }
 
 void sig_handler(int sig)
@@ -66,192 +46,22 @@ void sig_handler(int sig)
     clean_up();
 }
 
-void write(cv::Mat &img, const char *str, const cv::Point &pt)
+bool ctrl_signal_callback(bool detected, float yaw, float pitch)
 {
-    cv::Size text_size = cv::getTextSize(str, cv::FONT_HERSHEY_SIMPLEX, 0.5, 1, 0);
-    cv::rectangle(img, pt, pt + cv::Point(text_size.width, -text_size.height), cv::Scalar(0, 0, 0), cv::FILLED);
-    cv::putText(img, str, pt, cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 1, 8);
-}
-
-void VideoReader()
-{
-    Mat raw_input;
-    while(running)
-    {
-        if(!cap.read(raw_input))
-        {
-            running = false;
-            break;
-        }
-        mtx_output.lock();
-        if(running && recording)
-        {
-            writer.write(raw_input);
-        }
-        mtx_output.unlock();
-        mtx_input.lock();
-        img = raw_input.clone();
-        new_image = true;
-        mtx_input.unlock();
-    }
-}
-
-void Detector()
-{
-    bool detected;
-    float last_yaw = 0.0f, last_pitch = 0.0f;
-    float yaw, pitch;
-    float future_yaw, future_pitch;
-    char buf[100];
-    Point3f target;
-    int frame_count = 0;
-    chrono::high_resolution_clock::time_point last = chrono::high_resolution_clock::now();
-    while(running)
-    {
-        mtx_input.lock();
-        if(!new_image)
-        {
-            mtx_input.unlock();
-            usleep(20000);
-            continue;
-        }
-        auto Tstart = chrono::system_clock::now();
-        detected = DetectionNG::DetectArmor(img, target);
-        auto Tend = chrono::system_clock::now();
-        new_image = false;
-        mtx_output.lock();
-        if(!running)
-        {
-            mtx_input.unlock();
-            mtx_output.unlock();
-            break;
-        }
-        if(chrono::duration_cast<chrono::duration<double>>(chrono::high_resolution_clock::now() - last).count() > 1.0)
-        {
-            if(show_fps) cout << frame_count << endl;
-            frame_count = 0;
-            last = chrono::high_resolution_clock::now();
-        }
-        frame_count++;
-        if(detected)
-        {
-            yaw = atan2(target.x, target.z) / M_PI * 180;
-            pitch = atan2(target.y, sqrt(target.x*target.x + target.z*target.z)) / M_PI * 180;
-            future_yaw = (yaw - last_yaw) * 0.5f + yaw;
-            future_pitch = (pitch - last_pitch) * 0.5f + pitch;
-            last_yaw = yaw;
-            last_pitch = pitch;
-            if(show_output) cout << yaw << ' ' << pitch << endl;
-            if(serial_comm)
-            {
-                if(!protocol::SendGimbalAngle(future_yaw, future_pitch))
-                {
-                    running = false;
-                }
-            }
-        }
-        else
-        {
-            if(show_output) cout << "not found" << endl;
-            if(serial_comm)
-            {
-                if(!protocol::SendGimbalAngle(0, 0))
-                {
-                    running = false;
-                }
-            }
-        }
-        mtx_output.unlock();
-        if(verbose > 0)
-        {
-            const float duration = static_cast<float>(chrono::duration_cast<chrono::milliseconds>(Tend - Tstart).count());
-            sprintf(buf, "Time elapsed during detection algorithm : % 4.2f MS", duration);
-            write(img, buf, cv::Point(5, 20));
-            line(img, Point(img.cols/2 - 10, img.rows/2), Point(img.cols/2 + 10, img.rows/2), Scalar(255, 0, 0));
-            line(img, Point(img.cols/2, img.rows/2 - 10), Point(img.cols/2, img.rows/2 + 10), Scalar(255, 0, 0));
-            if(detected)
-            {
-                sprintf(buf, "Enemy spotted at (% 6.2f, % 6.2f, % 6.2f)", target.x, target.y, target.z);
-                write(img, buf, cv::Point(10, 40));
-                sprintf(buf, "Transmitted YAW=% 4.2fDEG PITCH=% 4.2fDEG", yaw, pitch);
-                write(img, buf, cv::Point(10, 60));
-            }
-            imshow("DetectionNG", img);
-        }
-        mtx_input.unlock();
-        if(verbose > 0)
-        {
-            if(single_step)
-            {
-                int key = 0;
-                do
-                {
-                    key = waitKey(0);
-                } while(key != ' ' && key != 27);
-                if(key == 27)
-                    running = false;
-            }
-            else
-            {
-                if(waitKey(1) == 27)
-                    running = false;
-            }
-        }
-    }
+    return protocol::SendGimbalAngle(yaw, pitch);
 }
 
 int main(int argc, char *argv[])
 {
-    INPUT_TYPE input_type = CAMERA;
     string serial_device("/dev/serial_sdk");
     serial_comm = true;
-    int camera_id = 0, custom_width = 640, custom_height = 480;
-    string video_file, record_file;
     if(argc > 1)
     {
         for(int i = 1; i < argc; i++)
         {
-            if(strcmp(argv[i], "--verbose") == 0 && i+1 < argc)
-            {
-                verbose = argv[++i][0] - '0';
-            }
-            else if(strcmp(argv[i], "--serial") == 0 && i+1 < argc)
-            {
-                serial_device = argv[++i];
-            }
-            else if(strcmp(argv[i], "--camera") == 0 && i+1 < argc)
-            {
-                camera_id = argv[++i][0] - '0';
-            }
-            else if(strcmp(argv[i], "--width") == 0 && i+1 < argc)
-            {
-                custom_width = atoi(argv[++i]);
-            }
-            else if(strcmp(argv[i], "--height") == 0 && i+1 < argc)
-            {
-                custom_height = atoi(argv[++i]);
-            }
-            else if(strcmp(argv[i], "--video") == 0 && i+1 < argc)
-            {
-                input_type = VIDEO;
-                video_file = argv[++i];
-            }
-            else if(strcmp(argv[i], "--record") == 0 && i+1 < argc)
-            {
-                recording = true;
-                record_file = argv[++i];
-            }
-            else if(strcmp(argv[i], "--robot") == 0 && i+1 < argc)
-            {
-                robot = argv[++i];
-            }
-            else if(strcmp(argv[i], "--dummy") == 0)
+            if(strcmp(argv[i], "--dummy") == 0)
             {
                 serial_comm = false;
-            }
-            else if(strcmp(argv[i], "--single-step") == 0)
-            {
-                single_step = true;
             }
             else if(strcmp(argv[i], "--show-fps") == 0)
             {
@@ -261,56 +71,42 @@ int main(int argc, char *argv[])
             {
                 show_output = true;
             }
+            else if(strcmp(argv[i], "--show-img") == 0)
+            {
+                show_img = true;
+            }
             else
             {
                 cout << "Unrecognized parameter " << argv[i] << endl;
-                return 0;
+                return 1;
             }
         }
     }
     Mat img, res;
-    float intrinsic_matrix[9] = { 1536.07f, 0.0f, 320.0f,
-                                       0.0f, 1542.55f, 240.0f,
-                                       0.0f, 0.0f, 1.0f };
-    float distortion_coeffs[5] = { 0.44686f, 15.5414f, -0.009048f, -0.009717f, -439.74f };
+    float intrinsic_matrix[9];
+    float distortion_coeffs[5];
     ifstream fin("camera.txt");
-    if(fin)
+    if(!fin)
     {
-        cout << "Reading calibration data from camera.txt" << endl;
-        for(int i = 0; i < 3; i++)
-        {
-            for(int j = 0; j < 3; j++)
-                fin >> intrinsic_matrix[i*3+j];
-        }
-        for(int i = 0; i < 5; i++)
-            fin >> distortion_coeffs[i];
-        fin.close();
+        cout << "Camera calibration data not available" << endl;
+        return 1;
     }
-    DetectionNG::InitDetector(intrinsic_matrix, distortion_coeffs);
-    switch(input_type)
+    for(int i = 0; i < 3; i++)
     {
-        case CAMERA:
-            if(!cap.open(camera_id, CAP_V4L2))
-            {
-                cerr << "Unable to open camera" << endl;
-                return 1;
-            }
-            cap.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
-            cap.set(cv::CAP_PROP_FRAME_WIDTH, custom_width);
-            cap.set(cv::CAP_PROP_FRAME_HEIGHT, custom_height);
-            cap.set(cv::CAP_PROP_FPS, 60);
-            break;
-        case VIDEO:
-            if(!cap.open(video_file.c_str()))
-            {
-                cerr << "Unable to open video file" << endl;
-                return 1;
-            }
-            break;
+        for(int j = 0; j < 3; j++)
+            fin >> intrinsic_matrix[i*3+j];
     }
-    if(!cap.read(img))
+    for(int i = 0; i < 5; i++)
+        fin >> distortion_coeffs[i];
+    fin.close();
+    try
     {
-        cerr << "Unable to read image from input" << endl;
+        detector = new Detector("/dev/video0", intrinsic_matrix, distortion_coeffs, ctrl_signal_callback);
+    }
+    catch(exception &e)
+    {
+        cout << "Detector initialization failed" << endl;
+        cout << e.what() << endl;
         return 1;
     }
     if(serial_comm && !protocol::Connect(serial_device.c_str()))
@@ -318,34 +114,11 @@ int main(int argc, char *argv[])
         cerr << "Unable to connect " << serial_device << endl;
         return 1;
     }
-    if(recording)
-    {
-        writer.open(record_file.c_str(), VideoWriter::fourcc('M', 'J', 'P', 'G'), cap.get(cv::CAP_PROP_FPS), Size(custom_width, custom_height));
-    }
-    running = true;
     signal(SIGINT, sig_handler);
     signal(SIGKILL, sig_handler);
     signal(SIGTERM, sig_handler);
-    switch(input_type)
-    {
-        case CAMERA:
-            cout << "INPUT: CAMERA #" << camera_id << "@" << cap.get(cv::CAP_PROP_FRAME_WIDTH) << "x" << cap.get(cv::CAP_PROP_FRAME_HEIGHT) << "@" << cap.get(cv::CAP_PROP_FPS) << "FPS" << endl;
-            break;
-        case VIDEO:
-            cout << "INPUT: VIDEO " << video_file << "@" << cap.get(cv::CAP_PROP_FRAME_WIDTH) << "x" << cap.get(cv::CAP_PROP_FRAME_HEIGHT) << "@" << cap.get(cv::CAP_PROP_FPS) << "FPS" << endl;
-            break;
-    }
-    if(serial_comm)
-    {
-        cout << "OUTPUT: " << serial_device << endl;
-    }
-    if(recording)
-    {
-        cout << "RECORDING: " << record_file << endl;
-    }
-    thread Tin(VideoReader);
-    Detector();
-    Tin.join();
+    detector->StartDetection();
+    detector->Spin();
     clean_up();
     return 0;
 }
