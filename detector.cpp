@@ -175,7 +175,7 @@ bool Detector::DetectArmor(Mat &img, Point3f &target)
         Mat mask, mat_mean, mat_stddev;
         mask = Mask(gray.size(), light.vertex[0], light.vertex[1], light.vertex[2], light.vertex[3]);
         meanStdDev(color_sub, mat_mean, mat_stddev, mask);
-        if(mat_mean.at<double>(0, 0) > 250.0) continue;
+        if(mat_mean.at<double>(0, 0) > 254.9) continue;
         lights.push_back(light);
     }
     for(int i = 0; i < lights.size(); i++)
