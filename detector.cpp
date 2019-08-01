@@ -29,6 +29,12 @@ using namespace cv;
 extern int verbose;
 extern bool show_output, show_fps, show_img;
 
+enum EnemyColor
+{
+    RED = 0,
+    BLUE
+} enemy = RED;
+
 Point3f Detector::CalculateCoordinate(const Point2f vertex[])
 {
     Mat rvec, tvec;
@@ -158,10 +164,17 @@ bool Detector::DetectArmor(Mat &img, Point3f &target)
     vector<Mat> bgr;
     split(img, bgr);
     Mat color_sub;
-    subtract(bgr[2], bgr[1], color_sub);
-    inRange(color_sub, Scalar(50), Scalar(255), color_sub);
+    if(enemy == RED)
+    {
+        subtract(bgr[2], bgr[1], color_sub);
+        inRange(color_sub, Scalar(50), Scalar(255), color_sub);
+    }
+    else
+    {
+        subtract(bgr[0], bgr[1], color_sub);
+        inRange(color_sub, Scalar(90), Scalar(255), color_sub);
+    }
     inRange(hsv, Scalar(0, 0, 235), Scalar(255, 255, 255), hsv);
-    floodFill(color_sub, Point(0, 0), Scalar(255));
     vector<vector<Point>> contours;
     findContours(hsv, contours, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);
     vector<SingleLightbar> lights;
@@ -173,9 +186,14 @@ bool Detector::DetectArmor(Mat &img, Point3f &target)
         SingleLightbar light(minAreaRect(ct));
         if(abs(light.angle - 90.0f) > 30.f) continue;
         Mat mask, mat_mean, mat_stddev;
-        mask = Mask(gray.size(), light.vertex[0], light.vertex[1], light.vertex[2], light.vertex[3]);
+        RotatedRect rrect = minAreaRect(ct);
+        rrect.size.width *= 2;
+        rrect.size.height *= 2;
+        Point2f vertex[4];
+        rrect.points(vertex);
+        mask = Mask(gray.size(), vertex[0], vertex[1], vertex[2], vertex[3]);
         meanStdDev(color_sub, mat_mean, mat_stddev, mask);
-        if(mat_mean.at<double>(0, 0) > 254.9) continue;
+        if(mat_mean.at<double>(0, 0) < 0.1) continue;
         lights.push_back(light);
     }
     for(int i = 0; i < lights.size(); i++)
@@ -209,8 +227,6 @@ bool Detector::DetectArmor(Mat &img, Point3f &target)
             mask = Mask(gray.size(), left.vertex[3], left.vertex[2], right.vertex[1], right.vertex[0]);
             meanStdDev(gray, mat_mean, mat_stddev, mask);
             if(mat_mean.at<double>(0, 0) > 90.0 || mat_stddev.at<double>(0, 0) > 90.0) continue;
-            meanStdDev(img, mat_mean, mat_stddev, Mask(img.size(), left.vertex));
-            if(mat_mean.at<double>(0, 0) > mat_mean.at<double>(0, 2)) continue;
 
             ArmorPlate candidate;
             candidate.vertex[0] = left.vertex[3];
