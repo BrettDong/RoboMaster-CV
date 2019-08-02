@@ -35,7 +35,10 @@ class Detector
         std::thread thread_detection;
         cv::Point3f CalculateCoordinate(const cv::Point2f vertex[]);
         std::pair<float, float> CalculateAngle(const cv::Point3f &target);
-        std::string camera_name;
+#ifdef RECORDING
+        cv::VideoWriter writer;
+        std::chrono::high_resolution_clock::time_point last_writer;
+#endif
         bool DetectArmor(cv::Mat &img, cv::Point3f &target);
         void Detection();
     public:

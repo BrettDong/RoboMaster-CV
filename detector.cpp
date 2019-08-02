@@ -17,7 +17,8 @@
 #include "detector.h"
 #include <iostream>
 #include <vector>
-#include <unistd.h>
+#include <ctime>
+#include <cstdlib>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #ifdef CUDA
@@ -55,7 +56,6 @@ pair<float, float> Detector::CalculateAngle(const Point3f &target)
 Detector::Detector(std::string camera, float intrinsic_matrix[], float distortion_coeffs[], std::function<bool(bool, float, float)> callback)
 {
     if(!cap.open(camera, CAP_V4L2)) throw runtime_error("cannot open camera");
-    camera_name = camera;
     cap.set(CAP_PROP_FOURCC, VideoWriter::fourcc('M', 'J', 'P', 'G'));
     cap.set(CAP_PROP_FRAME_WIDTH, 640);
     cap.set(CAP_PROP_FRAME_HEIGHT, 480);
@@ -309,15 +309,18 @@ void Detector::Detection()
     chrono::high_resolution_clock::time_point last_frame_count = chrono::high_resolution_clock::now();
     while(running && cap.read(img))
     {
+#ifdef RECORDING
+        writer.write(img);
+#endif
         if(DetectArmor(img, target))
         {
             tie(yaw, pitch) = CalculateAngle(target);
-            if(show_output) cout << camera_name << " (" << yaw << "," << pitch << ")" << endl;
+            if(show_output) cout << "(" << yaw << "," << pitch << ")" << endl;
             if(!ctrl_signal_callback(true, yaw, pitch)) running = false;
         }
         else
         {
-            if(show_output) cout << camera_name << " target not found" << endl;
+            if(show_output) cout << "target not found" << endl;
             if(!ctrl_signal_callback(false, 0.0f, 0.0f)) running = false;
         }
         if(show_fps)
@@ -325,23 +328,38 @@ void Detector::Detection()
             ++frame_count;
             if(chrono::duration_cast<chrono::milliseconds>(chrono::high_resolution_clock::now() - last_frame_count).count() > 1000)
             {
-                cout << camera_name << " FPS = " << frame_count << endl;
+                cout << "FPS = " << frame_count << endl;
                 frame_count = 0;
                 last_frame_count = chrono::high_resolution_clock::now();
             }
         }
         if(show_img)
         {
-            imshow(camera_name.c_str(), img);
+            imshow("Detector", img);
             if(waitKey(1) == 27) running = false;
         }
-        if(camera_name != "/dev/video0") usleep(rand() * 100000.0 / RAND_MAX);
+#ifdef RECORDING
+        if(chrono::duration_cast<chrono::seconds>(chrono::high_resolution_clock::now() - last_writer).count() > 10)
+        {
+            writer.release();
+            ostringstream oss;
+            oss << time(NULL) << ".mov";
+            writer.open(oss.str().c_str(), VideoWriter::fourcc('M', 'J', 'P', 'G'), 30, Size(640, 480));
+            last_writer = chrono::high_resolution_clock::now();
+        }
+#endif
     }
     running = false;
 }
 
 void Detector::StartDetection()
 {
+#ifdef RECORDING
+    ostringstream oss;
+    oss << time(NULL) << ".mov";
+    writer.open(oss.str().c_str(), VideoWriter::fourcc('M', 'J', 'P', 'G'), 30, Size(640, 480));
+    last_writer = chrono::high_resolution_clock::now();
+#endif
     running = true;
     thread_detection = thread(&Detector::Detection, this);
 }
