@@ -25,7 +25,12 @@ class Transmitter
         Transmitter() = delete;
         Transmitter(const char *serial_device);
         ~Transmitter();
+#ifdef SENTRY
+        bool TransmitGimbalAngle(bool gimbal_front, const float yaw, const float pitch, bool chassis_rear_left, bool chassis_rear_right);
+        bool TransmitShootCmd(bool shoot);
+#else
         bool TransmitGimbalAngle(const float yaw, const float pitch);
+#endif
 };
 
 #endif //PROTOCOL_H_

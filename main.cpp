@@ -31,16 +31,22 @@
 using namespace std;
 using namespace cv;
 bool show_output, show_fps, show_img;
+#ifdef SENTRY
+Detector *detector, *detector_chassis_left, *detector_chassis_right;
+atomic<bool> chassis_left, chassis_right;
+#else
 Detector *detector;
+#endif
 Transmitter *transmitter;
 
 void clean_up()
 {
-    if(detector) detector->StopDetection();
-    if(transmitter) delete transmitter;
-    delete detector;
-    detector = nullptr;
-    transmitter = nullptr;
+    if(detector) { detector->StopDetection(); delete detector; detector = nullptr; }
+#ifdef SENTRY
+    if(detector_chassis_left) { detector_chassis_left->StopDetection(); delete detector_chassis_left; detector_chassis_left = nullptr; }
+    if(detector_chassis_right) { detector_chassis_right->StopDetection(); delete detector_chassis_right; detector_chassis_right = nullptr; }
+#endif
+    if(transmitter) { delete transmitter; transmitter = nullptr; }
 }
 
 void sig_handler(int sig)
@@ -48,11 +54,21 @@ void sig_handler(int sig)
     clean_up();
 }
 
+#ifdef SENTRY
+bool ctrl_signal_callback(bool detected, float yaw, float pitch)
+{
+    if(transmitter) return transmitter->TransmitGimbalAngle(detected, yaw, pitch, chassis_left, chassis_right) && transmitter->TransmitShootCmd(detected && hypot(yaw, pitch) < 2.0f);
+    else return true;
+}
+bool chassis_left_callback(bool detected, float, float) { chassis_left = detected; return true; }
+bool chassis_right_callback(bool detected, float, float) { chassis_right = detected; return true; }
+#else
 bool ctrl_signal_callback(bool detected, float yaw, float pitch)
 {
     if(transmitter) return transmitter->TransmitGimbalAngle(yaw, pitch);
     else return true;
 }
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -101,6 +117,10 @@ int main(int argc, char *argv[])
     try
     {
         detector = new Detector("/dev/video0", intrinsic_matrix, distortion_coeffs, ctrl_signal_callback);
+#ifdef SENTRY
+        detector_chassis_left = new Detector("/dev/video1", intrinsic_matrix, distortion_coeffs, chassis_left_callback);
+        detector_chassis_right = new Detector("/dev/video2", intrinsic_matrix, distortion_coeffs, chassis_right_callback);
+#endif
     }
     catch(exception &e)
     {
@@ -126,7 +146,15 @@ int main(int argc, char *argv[])
     signal(SIGKILL, sig_handler);
     signal(SIGTERM, sig_handler);
     detector->StartDetection();
+#ifdef SENTRY
+    detector_chassis_left->StartDetection();
+    detector_chassis_right->StartDetection();
+#endif
     detector->Spin();
+#ifdef SENTRY
+    detector_chassis_left->Spin();
+    detector_chassis_right->Spin();
+#endif
     clean_up();
     return 0;
 }

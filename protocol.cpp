@@ -149,24 +149,10 @@ Transmitter::~Transmitter()
 #define GIMBAL_CMD_SET (0x03u)
 #define MANIFOLD2_ADDRESS (0x00u)
 #define GIMBAL_ADDRESS (0x02u)
+
 #pragma pack(push, 1)
 #define CMD_SET_GIMBAL_ANGLE (0x03u)
-struct gimbal_ctrl
-{
-    union
-    {
-        uint8_t flag;
-        struct
-        {
-            uint8_t yaw_mode: 1;
-            uint8_t pitch_mode: 1;
-        } bit;
-    } ctrl;
-    float pitch;
-    float yaw;
-    uint32_t interval;
-};
-
+#define CMD_SET_SHOOT_FREQUENCY (0x05u)
 struct header
 {
     uint32_t sof : 8;
@@ -194,9 +180,64 @@ struct header
     }
 };
 
+#ifdef SENTRY
+struct gimbal_ctrl
+{
+    union
+    {
+        uint8_t flag;
+        struct
+        {
+            uint8_t yaw_mode: 1;
+            uint8_t pitch_mode: 1;
+        } bit;
+    } ctrl;
+    float pitch;
+    float yaw;
+    uint32_t interval;
+    union
+    {
+        uint8_t flag;
+        struct
+        {
+            uint8_t gimbal_front:1;
+            uint8_t chassis_rear_left:1;
+            uint8_t chassis_rear_right:1;
+        } bit;
+    } occurrence;
+};
+
+struct shoot_ctrl
+{
+    uint8_t shoot_cmd;
+    uint32_t shoot_add_num;
+    uint16_t shoot_freq;
+};
+#else
+struct gimbal_ctrl
+{
+    union
+    {
+        uint8_t flag;
+        struct
+        {
+            uint8_t yaw_mode: 1;
+            uint8_t pitch_mode: 1;
+        } bit;
+    } ctrl;
+    float pitch;
+    float yaw;
+    uint32_t interval;
+};
+#endif
+
 #pragma pack(pop)
 
+#ifdef SENTRY
+bool Transmitter::TransmitGimbalAngle(bool gimbal_front, const float yaw, const float pitch, bool chassis_rear_left, bool chassis_rear_right)
+#else
 bool Transmitter::TransmitGimbalAngle(const float yaw, const float pitch)
+#endif
 {
     static const uint8_t cmd_set_prefix[] = {CMD_SET_GIMBAL_ANGLE, GIMBAL_CMD_SET};
     static const uint32_t HEADER_LEN = sizeof(header), CMD_SET_PREFIX_LEN = 2*sizeof(uint8_t);
@@ -213,6 +254,11 @@ bool Transmitter::TransmitGimbalAngle(const float yaw, const float pitch)
     gimbal_ctrl_data.pitch = pitch;
     gimbal_ctrl_data.yaw = yaw;
     gimbal_ctrl_data.interval = duration_cast<milliseconds>(system_clock::now() - Tepoch).count();
+#ifdef SENTRY
+    gimbal_ctrl_data.occurrence.bit.gimbal_front = gimbal_front;
+    gimbal_ctrl_data.occurrence.bit.chassis_rear_left = chassis_rear_left;
+    gimbal_ctrl_data.occurrence.bit.chassis_rear_right = chassis_rear_right;
+#endif
 
     ++header_data.seq_num;
     header_data.length = pack_length;
@@ -227,3 +273,35 @@ bool Transmitter::TransmitGimbalAngle(const float yaw, const float pitch)
     for(int i = 0; i < pack_length; i++) printf("%02x ", buffer[i]);
     printf("]\n");*/
 }
+
+#ifdef SENTRY
+bool Transmitter::TransmitShootCmd(bool shoot)
+{
+    static const uint8_t cmd_set_prefix[] = {CMD_SET_SHOOT_FREQUENCY, GIMBAL_CMD_SET};
+    static const uint32_t HEADER_LEN = sizeof(header), CMD_SET_PREFIX_LEN = 2*sizeof(uint8_t);
+    static const uint32_t CRC_HEADER_LEN = sizeof(uint16_t), CRC_DATA_LEN = sizeof(uint32_t);
+    static const uint32_t DATA_LEN = sizeof(shoot_ctrl);
+    static const uint16_t pack_length = HEADER_LEN + CMD_SET_PREFIX_LEN + DATA_LEN + CRC_DATA_LEN;
+    static header header_data;
+    static shoot_ctrl shoot_ctrl_data;
+    static uint8_t buffer[1024];
+    static auto Tepoch = system_clock::now();
+
+    shoot_ctrl_data.shoot_cmd = shoot ? 1 : 0;
+    shoot_ctrl_data.shoot_add_num = 0;
+    shoot_ctrl_data.shoot_freq = 0;
+
+    ++header_data.seq_num;
+    header_data.length = pack_length;
+    header_data.crc = CRC16Calc((uint8_t*)&header_data, HEADER_LEN - CRC_HEADER_LEN);
+    memcpy(buffer, (uint8_t*)&header_data, HEADER_LEN);
+    memcpy(buffer + HEADER_LEN, cmd_set_prefix, CMD_SET_PREFIX_LEN);
+    memcpy(buffer + HEADER_LEN + CMD_SET_PREFIX_LEN, (uint8_t*)&shoot_ctrl_data, DATA_LEN);
+    uint32_t crc_data = CRC32Calc(buffer, pack_length - CRC_DATA_LEN);
+    memcpy(buffer + pack_length - CRC_DATA_LEN, &crc_data, CRC_DATA_LEN);
+    return write(serial_fd, buffer, pack_length) == pack_length;
+    /*printf("Sending %d bytes [ ", pack_length);
+    for(int i = 0; i < pack_length; i++) printf("%02x ", buffer[i]);
+    printf("]\n");*/
+}
+#endif

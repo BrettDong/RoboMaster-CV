@@ -12,6 +12,9 @@ else
     CFLAGS += -g -Og
     CXXFLAGS += -g -Og
 endif
+ifeq ($(SENTRY), 1)
+    CXXFLAGS += -DSENTRY
+endif
 CXXFLAGS += $(shell pkg-config --cflags opencv4)
 LDFLAGS += $(shell pkg-config --libs opencv4)
 .PHONY: clean all
